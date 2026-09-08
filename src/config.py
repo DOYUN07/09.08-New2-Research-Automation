@@ -27,6 +27,8 @@ class Institution:
     type: str = "html"
     notes: str = ""
     verify_ssl: bool = True
+    # 기관 사이트 밖으로 나가는 링크도 공고로 볼지 (기본: 버림)
+    allow_external_links: bool = False
     encoding: str | None = None
 
     # 선택 오버라이드 — 비워두면 범용 파서가 알아서 처리

@@ -17,7 +17,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
 
@@ -142,7 +142,12 @@ def split_period(text: str, today: date | None = None) -> tuple[date | None, dat
 # ---------------------------------------------------------------- 텍스트 정리
 
 _BADGES = re.compile(
-    r"(새글|NEW|new|N\b|공지|답변|첨부파일|파일첨부|조회수|D-\d+|D\s*-\s*\d+|마감임박)"
+    r"(새로운\s*게시글|신규\s*게시글|새글|NEW|new|N\b|공지|답변|첨부파일|파일첨부"
+    r"|조회수|D-\d+|D\s*-\s*\d+|마감임박)"
+)
+# 제목 뒤에 붙는 '등록일 + 조회수' 꼬리: "…개최 안내 2026-09-08 23"
+_TRAILING_META = re.compile(
+    r"\s+20\d{2}\s*[-./]\s*\d{1,2}\s*[-./]\s*\d{1,2}(\s*[\d,]+)?\s*$"
 )
 _WS = re.compile(r"\s+")
 
@@ -365,6 +370,31 @@ _META_LABEL = re.compile(
 )
 
 
+def _same_site(url: str, base: str) -> bool:
+    """공고 링크가 그 기관 사이트 안쪽인지 확인한다.
+
+    기관 메인 페이지를 목록으로 쓰면 '판로지원 플랫폼 → sepp.or.kr' 같은
+    외부 배너·바로가기가 공고로 딸려 들어온다. 실제로 한국사회적기업진흥원에서
+    이런 항목 2건이 메일에 나갔다.
+
+    전북테크노파크처럼 목록(jbcis.jbtp.or.kr)과 상세(www.jbtp.or.kr)의 서브도메인이
+    다른 경우가 있으므로, 호스트 전체가 아니라 **등록 도메인**끼리 비교한다.
+    """
+
+    def site(u: str) -> str:
+        host = urlparse(u).netloc.lower().split(":")[0]
+        if not host:
+            return ""
+        parts = host.split(".")
+        # or.kr / go.kr / co.kr 처럼 2단계 국가 도메인은 뒤 3개를 본다
+        two_level = {"kr", "jp", "uk", "au", "cn"}
+        keep = 3 if len(parts) >= 3 and parts[-1] in two_level and len(parts[-2]) <= 3 else 2
+        return ".".join(parts[-keep:])
+
+    a, b = site(url), site(base)
+    return not a or not b or a == b
+
+
 def _cut_meta(title: str) -> str:
     """'…모집 공고 담당부서 OO과 공고번호 제2026-540호' 같은 꼬리를 잘라낸다.
 
@@ -373,6 +403,7 @@ def _cut_meta(title: str) -> str:
     """
     if len(title) < 15:
         return title
+    title = _TRAILING_META.sub("", title).strip()
     m = _META_LABEL.search(title)
     if m and m.start() >= 10:
         return title[: m.start()].strip()
@@ -506,6 +537,10 @@ def _rows_to_notices(
             continue
         seen_titles.add(title)
 
+        url = _pick_link(row, inst)
+        if not inst.allow_external_links and not _same_site(url, inst.base or inst.url):
+            continue  # 외부 사이트로 나가는 배너·바로가기는 공고가 아니다
+
         posted, deadline = _pick_dates(row, inst, today)
         # 연도 없는 날짜('4.24')를 해석할 기준일. 게시일을 알면 그쪽이 훨씬 정확하다.
         ref = posted or today or date.today()
@@ -529,7 +564,7 @@ def _rows_to_notices(
                 institution_id=inst.id,
                 institution_name=inst.name,
                 title=title,
-                url=_pick_link(row, inst),
+                url=url,
                 posted=posted,
                 deadline=deadline,
                 closed_flag=closed,

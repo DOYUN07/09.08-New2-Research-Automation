@@ -465,6 +465,52 @@ def main() -> int:
     _, log4 = S.apply_all(cfg4, load_institutions_for_test())
     check("로그 없음", log4, [])
 
+    print("\n[13] 외부 배너·바로가기를 공고로 착각하지 않는지 (한국사회적기업진흥원)")
+    # 메인 페이지를 목록으로 쓰면 '판로지원 플랫폼 → sepp.or.kr' 같은
+    # 외부 배너가 공고로 딸려 들어왔다. 실제로 메일에 2건 나갔다.
+    banner_html = """<html><body><table><tbody>
+      <tr><td>1</td><td><a href="https://www.sepp.or.kr/store365">판로지원 플랫폼</a></td>
+          <td>2026-09-08</td></tr>
+      <tr><td>2</td><td><a href="https://www.coop.go.kr/home/index.do">협동조합 홍보포털</a></td>
+          <td>2026-09-08</td></tr>
+      <tr><td>3</td><td><a href="/homepage/bbs/boardView.do?bIdx=1">
+          2026년 사회적기업 인증 지원사업 공고</a></td><td>2026-09-08</td></tr>
+      <tr><td>4</td><td><a href="/homepage/bbs/boardView.do?bIdx=2">
+          「2026년 제2차 사회서비스 정책포럼」 개최 안내 2026-09-08 23</a></td><td>2026-09-08</td></tr>
+      <tr><td>5</td><td><a href="/homepage/bbs/boardView.do?bIdx=3">
+          2026 서울창업허브 공덕 9월 허브아워 새로운게시글</a></td><td>2026-09-03</td></tr>
+    </tbody></table></body></html>"""
+    r = P(
+        banner_html,
+        inst(
+            id="se",
+            name="한국사회적기업진흥원",
+            url="https://socialenterprise.or.kr/homepage/main.do",
+            base="https://socialenterprise.or.kr",
+        ),
+    )
+    titles13 = [n.title for n in r]
+    check("외부 배너 2건 제외", len(r), 3)
+    check("'판로지원 플랫폼' 없음", "판로지원 플랫폼" in titles13, False)
+    check("'협동조합 홍보포털' 없음", "협동조합 홍보포털" in titles13, False)
+    check("본문 공고는 남음", "2026년 사회적기업 인증 지원사업 공고" in titles13, True)
+
+    print("\n[13-b] 제목 뒤 '등록일+조회수' 꼬리와 '새로운게시글' 배지 제거")
+    check("등록일·조회수 꼬리 제거", titles13[1], "「2026년 제2차 사회서비스 정책포럼」 개최 안내")
+    check("'새로운게시글' 제거", titles13[2], "2026 서울창업허브 공덕 9월 허브아워")
+
+    print("\n[13-c] 서브도메인이 달라도 같은 기관이면 유지 (전북테크노파크)")
+    from src.parse import _same_site
+
+    for u, b, want in [
+        ("https://www.jbtp.or.kr/board/view.jbtp?x=1", "https://jbcis.jbtp.or.kr", True),
+        ("https://www.sepp.or.kr/store365", "https://socialenterprise.or.kr", False),
+        ("https://www.coop.go.kr/home", "https://socialenterprise.or.kr", False),
+        ("https://bipa.kr/board/x", "https://bipa.kr", True),
+        ("/relative/path", "https://bipa.kr", True),
+    ]:
+        check(f"{u[:38]}", _same_site(u, b), want)
+
     # ---------------------------------------------------------------- 마감일 판정
     print("\n[12] 마감일 읽기 — 실제 공고에서 쓰이는 표기들")
     from src import deadline as DL
