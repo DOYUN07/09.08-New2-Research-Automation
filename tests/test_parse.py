@@ -333,6 +333,23 @@ def main() -> int:
             check("색 채운 셀 없음", painted, 0)
             check("링크는 하이퍼링크", ws.cell(2, 7).value, "바로가기")
 
+    print("\n[10-b] 누적 엑셀 갱신 요일 (월·수·금)")
+    from src.config import Config as _Cfg
+
+    cfg_w = load_config()
+    check("기본 요일", cfg_w.archive_weekdays, [0, 2, 4])
+    for d, want in [
+        (date(2026, 9, 7), True),    # 월
+        (date(2026, 9, 8), False),   # 화
+        (date(2026, 9, 9), True),    # 수
+        (date(2026, 9, 10), False),  # 목
+        (date(2026, 9, 11), True),   # 금
+    ]:
+        check(f"{d} 갱신 여부", d.weekday() in cfg_w.archive_weekdays, want)
+    check("화요일의 다음 갱신일", cfg_w.next_archive_day(date(2026, 9, 8)), "수요일")
+    check("금요일의 다음 갱신일", cfg_w.next_archive_day(date(2026, 9, 11)), "월요일")
+    check("예전 단수 설정도 동작", _Cfg(archive_attach_weekday=0).archive_weekdays, [0])
+
     # ---------------------------------------------------------------- 구글시트
     print("\n[11] 구글시트 연동")
     from src import sheet as S

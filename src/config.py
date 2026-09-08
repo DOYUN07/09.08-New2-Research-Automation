@@ -75,7 +75,28 @@ class Config:
 
     # 누적 기록
     archive_enabled: bool = True
-    archive_attach_weekday: int = 0  # 0=월요일 … 6=일요일
+    # 저장소 엑셀을 갱신하고 메일에 첨부할 요일 (0=월 … 6=일). 기본 월·수·금
+    archive_attach_weekdays: list[int] = field(default_factory=lambda: [0, 2, 4])
+    # 예전 설정 이름(요일 하나). 남아 있으면 위 목록 대신 이걸 쓴다.
+    archive_attach_weekday: int | None = None
+
+    @property
+    def archive_weekdays(self) -> list[int]:
+        if self.archive_attach_weekday is not None:
+            return [int(self.archive_attach_weekday)]
+        return [int(x) for x in (self.archive_attach_weekdays or [])]
+
+    def next_archive_day(self, today) -> str:
+        """다음으로 저장소 엑셀이 갱신되는 요일 이름."""
+        names = ["월", "화", "수", "목", "금", "토", "일"]
+        days = sorted(self.archive_weekdays)
+        if not days:
+            return "설정된 요일 없음"
+        for step in range(1, 8):
+            wd = (today.weekday() + step) % 7
+            if wd in days:
+                return f"{names[wd]}요일"
+        return "설정된 요일 없음"
 
     include_keywords: list[str] = field(default_factory=list)
     exclude_keywords: list[str] = field(default_factory=list)

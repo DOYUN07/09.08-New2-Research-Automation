@@ -181,15 +181,7 @@ def run(dry_run: bool = False) -> int:
     (OUT / "brief.txt").write_text(text_body, encoding="utf-8")
     print(f"-- 결과 저장: {OUT/'brief.html'}")
 
-    if dry_run:
-        print("-- dry-run: 발송·이력 저장을 건너뜁니다")
-        return 0
-
-    if total == 0 and not cfg.send_when_empty:
-        print("-- 신규 공고 0건, send_when_empty=false → 발송하지 않습니다")
-        return 0
-
-    # ---- 누적 기록 준비 (발송 성공 후에만 저장한다) ----
+    # ---- 누적 기록 준비 ----
     sent = [n for v in grouped.values() for n in v]
     arch_rows = archive.load_rows()
     arch_rows, arch_added = archive.add(arch_rows, sent, today)
@@ -197,16 +189,28 @@ def run(dry_run: bool = False) -> int:
     attach: list[Path] = []
     xlsx_for_repo = False
     if cfg.archive_enabled:
-        # 보기용 엑셀은 매번 out/ 에 만들어 Artifacts로 확인할 수 있게 한다
+        # 미리보기용 엑셀은 항상 out/ 에 만든다 (dry-run 이어도 Artifacts로 확인 가능)
         made = archive.build_xlsx(arch_rows, OUT / archive.ARCHIVE_XLSX.name)
         if made is None:
             print("-- openpyxl 이 없어 엑셀 누적본을 만들지 못했습니다")
         else:
             print(f"-- 누적 {len(arch_rows)}건 (오늘 +{arch_added}) → {made}")
-            # 지정한 요일에만 저장소에 커밋하고 메일에도 첨부한다
-            if today.weekday() == cfg.archive_attach_weekday:
+            # 지정한 요일에만 저장소 엑셀을 갱신하고 메일에도 첨부한다
+            if today.weekday() in cfg.archive_weekdays:
                 attach.append(made)
                 xlsx_for_repo = True
+            else:
+                nxt = cfg.next_archive_day(today)
+                print(f"   저장소 엑셀 갱신·메일 첨부는 {nxt} 에 이루어집니다")
+
+    if dry_run:
+        print("-- dry-run: 발송·이력 저장을 건너뜁니다")
+        print(f"   (누적 미리보기는 {OUT/archive.ARCHIVE_XLSX.name} 에 있습니다)")
+        return 0
+
+    if total == 0 and not cfg.send_when_empty:
+        print("-- 신규 공고 0건, send_when_empty=false → 발송하지 않습니다")
+        return 0
 
     subject = f"{cfg.subject_prefix} {today.strftime('%m월 %d일')} 신규 {total}건"
     if not is_configured():
