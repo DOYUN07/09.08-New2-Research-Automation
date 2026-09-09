@@ -188,6 +188,19 @@ def run(dry_run: bool = False) -> int:
 
     attach: list[Path] = []
     xlsx_for_repo = False
+
+    # 오늘치 공고만 담은 엑셀 — 누적본과 같은 양식이라 그대로 공유할 수 있다.
+    # 매일 첨부한다 (누적본은 월·수·금).
+    if cfg.daily_xlsx and sent:
+        daily = archive.build_xlsx(
+            archive.rows_of(sent, today),
+            archive.daily_xlsx_path(OUT, today),
+            sheet_title="공고브리핑",
+        )
+        if daily:
+            attach.append(daily)
+            print(f"-- 오늘치 엑셀 {len(sent)}건 → {daily.name}")
+
     if cfg.archive_enabled:
         # 미리보기용 엑셀은 항상 out/ 에 만든다 (dry-run 이어도 Artifacts로 확인 가능)
         made = archive.build_xlsx(arch_rows, OUT / archive.ARCHIVE_XLSX.name)

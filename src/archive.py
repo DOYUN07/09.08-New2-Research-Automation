@@ -23,6 +23,11 @@ from .parse import Notice
 ARCHIVE_CSV = ROOT / "state" / "archive.csv"
 ARCHIVE_XLSX = ROOT / "공고누적.xlsx"
 
+
+def daily_xlsx_path(out_dir: Path, day: date) -> Path:
+    """일일 첨부 파일 이름. 날짜가 들어가 공유해도 헷갈리지 않는다."""
+    return out_dir / f"공고브리핑_{day.isoformat()}.xlsx"
+
 HEADERS = ["발견일", "기관", "공고명", "게시일", "마감일", "매칭 키워드", "링크", "키"]
 
 
@@ -41,6 +46,29 @@ def load_rows(path: Path | None = None) -> list[dict]:
         return []
 
 
+def row_of(n: Notice, found: date) -> dict:
+    """공고 하나를 표 한 줄로 바꾼다. 누적본과 일일본이 같은 양식을 쓰도록 한 곳에 둔다."""
+    if n.note == "상시":
+        due = "상시모집"
+    else:
+        due = _fmt(n.deadline) or "확인필요"
+    return {
+        "발견일": found.isoformat(),
+        "기관": n.institution_name,
+        "공고명": n.title,
+        "게시일": _fmt(n.posted),
+        "마감일": due,
+        "매칭 키워드": ", ".join(n.matched_keywords),
+        "링크": n.url,
+        "키": n.key,
+    }
+
+
+def rows_of(notices: list[Notice], found: date) -> list[dict]:
+    """그날 공고만 담은 표 (누적과 무관, 일일 첨부용)."""
+    return [row_of(n, found) for n in notices]
+
+
 def add(rows: list[dict], notices: list[Notice], found: date) -> tuple[list[dict], int]:
     """오늘 발송한 공고를 누적 목록에 더한다. (전체 행, 새로 추가된 수)"""
     known = {r["키"] for r in rows}
@@ -48,18 +76,7 @@ def add(rows: list[dict], notices: list[Notice], found: date) -> tuple[list[dict
     for n in notices:
         if n.key in known:
             continue
-        rows.append(
-            {
-                "발견일": found.isoformat(),
-                "기관": n.institution_name,
-                "공고명": n.title,
-                "게시일": _fmt(n.posted),
-                "마감일": _fmt(n.deadline) or "확인필요",
-                "매칭 키워드": ", ".join(n.matched_keywords),
-                "링크": n.url,
-                "키": n.key,
-            }
-        )
+        rows.append(row_of(n, found))
         known.add(n.key)
         added += 1
     return rows, added
@@ -75,8 +92,11 @@ def save_csv(rows: list[dict], path: Path | None = None) -> None:
         w.writerows(sorted(rows, key=lambda r: (r["발견일"], r["기관"]), reverse=True))
 
 
-def build_xlsx(rows: list[dict], path: Path) -> Path | None:
-    """누적 CSV를 보기 좋은 엑셀로 만든다. 색은 쓰지 않는다(흑백 기본 서식)."""
+def build_xlsx(rows: list[dict], path: Path, sheet_title: str = "공고누적") -> Path | None:
+    """표 데이터를 보기 좋은 엑셀로 만든다. 색은 쓰지 않는다(흑백 기본 서식).
+
+    누적본과 일일본이 같은 함수를 쓰므로 양식이 항상 같다.
+    """
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Border, Font, Side
@@ -88,7 +108,7 @@ def build_xlsx(rows: list[dict], path: Path) -> Path | None:
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "공고누적"
+    ws.title = sheet_title
 
     base = Font(name="맑은 고딕", size=10)
     head = Font(name="맑은 고딕", size=10, bold=True)

@@ -75,6 +75,9 @@ class Config:
     verify_timeout: int = 15
     verify_delay: float = 0.4
 
+    # 그날 공고만 담은 엑셀을 매일 메일에 첨부할지 (누적본과 같은 양식)
+    daily_xlsx: bool = True
+
     # 누적 기록
     archive_enabled: bool = True
     # 저장소 엑셀을 갱신하고 메일에 첨부할 요일 (0=월 … 6=일). 기본 월·수·금

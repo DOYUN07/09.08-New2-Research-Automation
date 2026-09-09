@@ -333,6 +333,53 @@ def main() -> int:
             check("색 채운 셀 없음", painted, 0)
             check("링크는 하이퍼링크", ws.cell(2, 7).value, "바로가기")
 
+    print("\n[10-a2] 오늘치 엑셀 — 누적본과 양식이 같은지")
+    import tempfile as _tf
+    from pathlib import Path as _P
+
+    from src import archive as _ar
+
+    src_n = P(fixtures.BTP, inst(id="btp", name="부산테크노파크", base="https://www.btp.or.kr/"))
+    for n in src_n:
+        n.matched_keywords = ["테스트"]
+
+    with _tf.TemporaryDirectory() as td:
+        out = _P(td)
+        daily = _ar.build_xlsx(
+            _ar.rows_of(src_n, TODAY), _ar.daily_xlsx_path(out, TODAY), sheet_title="공고브리핑"
+        )
+        cum_rows, _ = _ar.add([], src_n, TODAY)
+        cum = _ar.build_xlsx(cum_rows, out / "공고누적.xlsx")
+        if daily is None or cum is None:
+            print("  (openpyxl 미설치 — 건너뜀)")
+        else:
+            from openpyxl import load_workbook as _lw
+
+            a, b = _lw(daily).active, _lw(cum).active
+            check("파일명에 날짜", daily.name, "공고브리핑_2026-09-07.xlsx")
+            check("시트명(오늘치)", a.title, "공고브리핑")
+            check("시트명(누적)", b.title, "공고누적")
+            check(
+                "헤더 동일",
+                [c.value for c in a[1]],
+                [c.value for c in b[1]],
+            )
+            check(
+                "열 너비 동일",
+                [a.column_dimensions[k].width for k in "ABCDEFG"],
+                [b.column_dimensions[k].width for k in "ABCDEFG"],
+            )
+            check("고정틀 동일", a.freeze_panes, b.freeze_panes)
+            check("행 수 동일", a.max_row, b.max_row)
+            painted = sum(
+                1
+                for ws in (a, b)
+                for r in ws.iter_rows()
+                for c in r
+                if c.fill and c.fill.fgColor and c.fill.fgColor.rgb not in (None, "00000000")
+            )
+            check("색 채운 셀 없음", painted, 0)
+
     print("\n[10-b] 누적 엑셀 갱신 요일 (월·수·금)")
     from src.config import Config as _Cfg
 
