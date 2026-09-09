@@ -11,8 +11,8 @@
 #    (MAIL_TO 가 있으면 아래 목록은 무시됩니다)
 recipients:
   - dlehdbs0716@gmail.com
-  - 받는사람1@example.com
-  - 받는사람2@example.com
+#- 1@example.com
+#- 2@example.com
 
 # 메일 제목 앞에 붙는 말머리
 subject_prefix: "[공고 브리핑]"
