@@ -35,9 +35,20 @@ class FilterStats:
         )
 
 
+def _norm(s: str) -> str:
+    """비교용으로 다듬는다 — 소문자로 바꾸고 공백을 모두 없앤다.
+
+    기관마다 띄어쓰기가 제각각이다. '공개 검증' / '공개검증', '결과 발표' /
+    '결과발표' 처럼 같은 말인데 공백 하나 때문에 키워드가 안 걸리는 일이 있었다.
+    (농림축산식품부 '포상 후보자 사전공개 및 공개 검증' 건)
+    이제 키워드를 한 가지 형태로만 적어두면 띄어쓰기와 무관하게 걸린다.
+    """
+    return "".join((s or "").split()).lower()
+
+
 def _hits(title: str, words: list[str]) -> list[str]:
-    low = title.lower()
-    return [w for w in words if w and w.lower() in low]
+    low = _norm(title)
+    return [w for w in words if w and _norm(w) in low]
 
 
 def apply_filters(

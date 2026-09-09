@@ -13,10 +13,8 @@
 # ⚠️ 실제 주소를 여기에 적을 때는 아래 예시 두 줄을 반드시 지우세요.
 #    example.com 주소가 남아 있으면 그 주소로도 발송을 시도해 실패합니다.
 recipients:
-  - dlehdbs0716@gmail.com
-  
-# - person1@example.com
-# - person2@example.com
+  - person1@example.com
+  - person2@example.com
 
 # 메일 제목 앞에 붙는 말머리
 subject_prefix: "[공고 브리핑]"
@@ -152,6 +150,11 @@ exclude_keywords:
   - 행정처분
   - 사전통지
   - 의견제출
+  # 이미 정해진 후보자 명단을 공개하고 이의신청을 받는 절차 — 신청할 수 있는 공고가 아님
+  # (포상·표창·유공 자체는 남겨둡니다. '정부포상 후보자 추천 공고'는 신청 대상이라서)
+  - 사전공개
+  - 공개검증
+  - 이의신청
   - 리플릿
   - 브로슈어
   - 카드뉴스
