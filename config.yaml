@@ -10,6 +10,8 @@
 #    GitHub Secrets 의 MAIL_TO 에 넣으면 저장소에 주소가 남지 않습니다.
 #    (MAIL_TO 가 있으면 아래 목록은 무시됩니다)
 recipients:
+  - dlehdbs0716@gmail.com
+  
   - 받는사람1@example.com
   - 받는사람2@example.com
 
