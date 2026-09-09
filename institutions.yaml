@@ -244,8 +244,8 @@ institutions:
 
   - id: socialenterprise
     name: 한국사회적기업진흥원
-    enabled: true
-    status: check
+    enabled: false
+    status: none
     url: "https://socialenterprise.or.kr/homepage/main.do"
     base: "https://socialenterprise.or.kr"
     notes: >
@@ -253,8 +253,10 @@ institutions:
       구 주소(/social/board/list.do)는 1·2차 진단 모두 HTTP 404 → 사용자가 알려준
       새 주소로 교체. 다만 이것은 게시판이 아니라 메인 페이지이므로, 파서가
       메인에 노출된 공지·공고 영역을 집어올 수 있고 배너·메뉴를 잘못 집을 수도 있다.
-      다음 진단에서 수집 건수와 샘플 제목을 확인할 것. 결과가 이상하면
-      메인에서 '알림·소식 > 공지사항' 게시판으로 들어간 실제 목록 주소로 바꿀 것.
+      2026-09-08·09 실전 결과: 외부 배너(판로지원 플랫폼→sepp.or.kr, 협동조합 홍보포털→coop.go.kr)와
+      자료실 글('인증 가이드', '인증 안내 리플릿')만 나오고 실제 공고는 한 건도 없었다.
+      메인 페이지는 공고 게시판이 아니므로 비활성화한다.
+      진짜 공고 게시판(알림·소식 > 공지사항 등) 주소를 찾으면 url 만 바꾸고 enabled: true 로.
 
   - id: ekr
     name: 한국농어촌공사

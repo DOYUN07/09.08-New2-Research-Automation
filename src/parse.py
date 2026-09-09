@@ -166,23 +166,32 @@ def clean_text(s: str) -> str:
     return _collapse_doubled(s)
 
 
+_HEAD = 12  # 제목 앞부분을 이만큼 잘라 재등장 여부를 본다
+
+
 def _collapse_doubled(s: str) -> str:
     """같은 제목이 두 번 이어붙은 경우를 되돌린다.
 
     한 <a> 안에 '말줄임용 span'과 '전체제목 span'이 같이 들어 있는 게시판이 있어
-    텍스트를 뽑으면 제목이 그대로 두 번 나온다.
+    텍스트를 뽑으면 제목이 그대로 두 번 나온다(부산테크노파크).
+
+    두 span의 내용이 정확히 같지 않은 경우가 많다 —
+    한쪽에만 '재공고'·'연장' 라벨이 붙거나, 한쪽이 말줄임표로 잘려 있다.
+
+        "…추가모집 공고 재공고 …추가모집 공고"
+        "…허브 특구 상생협력사업 공고(4차) 재공고 …허브 특구 상생협…"
+
+    그래서 길이를 반으로 나눠 비교하는 대신, **제목 앞부분이 뒤에서 다시 나오면
+    거기서 자른다.** 앞부분이 우연히 두 번 나오는 제목은 사실상 없다.
     """
-    if len(s) < 12:
+    if len(s) < _HEAD * 2:
         return s
-    n = len(s)
-    if n % 2 == 0:
-        half = n // 2
-        if s[:half] == s[half:]:
-            return s[:half].strip()
-    # 사이에 공백 하나가 낀 경우
-    half = (n - 1) // 2
-    if n % 2 == 1 and s[:half] == s[half + 1 :] and s[half] == " ":
-        return s[:half].strip()
+    head = s[:_HEAD]
+    again = s.find(head, _HEAD)
+    if again > 0:
+        first = s[:again].strip(" ·|/-")
+        if len(first) >= _HEAD:
+            return first
     return s
 
 

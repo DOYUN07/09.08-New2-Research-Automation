@@ -167,7 +167,7 @@ def render_text(
             continue
         lines.append(f"[{names.get(inst_id, inst_id)}]")
         for n in notices:
-            dl = _fmt(n.deadline, "마감일 확인필요")
+            dl = _fmt(n.deadline, "상시모집" if n.note == "상시" else "확인필요")
             lines.append(f"  · {n.title}")
             lines.append(f"    게시 {_fmt(n.posted, '미확인')} / 마감 {dl}")
             lines.append(f"    {n.url}")
