@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 
 from src.config import Institution, load_config, load_institutions
 from src.filters import FilterStats, apply_filters
@@ -432,7 +432,8 @@ def main() -> int:
     IN_CSV = (
         "기관명,주소,사용,메모\n"
         "부산정보산업진흥원,,N,잠시 끔\n"
-        "KOTRA,,Y,다시 켬\n"
+        "KITA(한국무역협회),,Y,다시 켬\n"
+        "한국바이오특화센터협의회,https://kbio.example.or.kr/list,Y,주소를 시트에서 채움\n"
         "새로운진흥원,https://example.or.kr/notice,Y,신규\n"
         "이름만있고주소없음,,Y,추가되면 안 됨\n"
     )
@@ -464,12 +465,23 @@ def main() -> int:
     check("수신자 (N·잘못된 주소 제외)", cfg2.recipients, ["a@zeroweb.co.kr"])
     by = {i.name: i for i in insts}
     check("시트에서 끈 기관", by["부산정보산업진흥원"].enabled, False)
-    check("시트에서 켠 기관", by["KOTRA"].enabled, True)
+    check("시트에서 켠 기관", by["KITA(한국무역협회)"].enabled, True)
     check("새 기관 추가됨", "새로운진흥원" in by, True)
     check("주소 없는 새 이름은 무시", "이름만있고주소없음" in by, False)
     check("로그 4줄", len(log), 4)
     inst_log = [x for x in log if x.startswith("구글시트 기관")][0]
-    check("시트가 켠 기관 이름이 로그에", "시트가 켬: KOTRA" in inst_log, True)
+    check("시트가 켠 기관 이름이 로그에", "시트가 켬: KITA(한국무역협회)" in inst_log, True)
+    # 주소가 비어 있는 기관만 시트가 채울 수 있다 (한국바이오특화센터협의회용 예외)
+    check(
+        "빈 주소를 시트가 채움",
+        by["한국바이오특화센터협의회"].url,
+        "https://kbio.example.or.kr/list",
+    )
+    check(
+        "이미 주소가 있는 기관은 시트가 못 덮음",
+        by["부산정보산업진흥원"].url,
+        "https://bipa.kr/board/business/list",
+    )
     check("시트가 끈 기관 이름이 로그에", "시트가 끔: 부산정보산업진흥원" in inst_log, True)
 
     print("\n[11-a2] 예전 방식(한 탭에 '구분' 칸)도 계속 동작")
@@ -758,6 +770,64 @@ def main() -> int:
     check("출처 표시", r[0].deadline_source, "제목")
     check("상시모집 인식", r[1].note, "상시")
     check("마감일 없는 건 그대로", r[2].deadline, None)
+
+    # --------------------------------------------------------------
+    # 34개 기관 게시판을 직접 열어 확인한 실제 상태값·표기 (2026-09-09 전수 검수)
+    # 여기서 쓰는 문자열은 전부 실제 게시판에서 그대로 가져온 것이다.
+    # --------------------------------------------------------------
+    print("\n[13] 게시판 상태값을 읽어 마감을 판정하는지")
+    from src.parse import row_status, dday_deadline
+    from bs4 import BeautifulSoup
+
+    def st(html):
+        return row_status(BeautifulSoup(html, "html.parser").find("tr"))
+
+    check("부산경제진흥원 '종료'", st("<tr><td>공고</td><td>종료</td></tr>"), "closed")
+    check("부산경제진흥원 '진행중'", st("<tr><td>공고</td><td>진행중</td></tr>"), "open")
+    check("광주TP '접수마감'", st("<tr><td>공고</td><td>접수마감</td></tr>"), "closed")
+    check("전남정보문화 '진행마감'", st("<tr><td>공고</td><td>진행마감</td></tr>"), "closed")
+    check("연구개발특구 '접수완료'", st("<tr><td>공고</td><td>접수완료</td></tr>"), "closed")
+    check("IRIS '공고접수중'", st("<tr><td>공고</td><td>공고접수중</td></tr>"), "open")
+    check("KOTRA '신청가능'", st("<tr><td>공고</td><td>신청가능</td></tr>"), "open")
+    check(
+        "제목 속 '마감'에 오탐하지 않음",
+        st("<tr><td>2026년 마감임박 사업 안내 공고문 게시</td></tr>"),
+        None,
+    )
+
+    print("\n[14] 'D-7' 만 있는 게시판의 마감일 환산")
+    check("D-7", dday_deadline("D-7", TODAY), TODAY + timedelta(days=7))
+    check("D - 19 (공백 포함)", dday_deadline("접수기간 D - 19", TODAY), TODAY + timedelta(days=19))
+    check("D-0 은 오늘 마감", dday_deadline("D-0", TODAY), TODAY)
+    check("비정상적으로 먼 값은 무시", dday_deadline("D-9999", TODAY), None)
+
+    print("\n[15] 목록에서 '…'로 잘린 제목을 title 속성으로 복구")
+    html = """<html><body><table><tbody>
+    <tr><td>2256</td><td><a href="/v/1"
+        title="[기업지원] 2026년도 하반기 중점산업 창업 중소기업 육성 및 경쟁력 강화 지원 계획 공고"
+        >[기업지원] 2026년도 하반기 중점산업 창업 중소기업 육성 및 …</a></td>
+        <td>관리자</td><td>2026-09-01</td></tr>
+    <tr><td>2255</td><td><a href="/v/2">2026년 하반기 일반경영안정자금 지원 계획 공고</a></td>
+        <td>관리자</td><td>2026-09-01</td></tr>
+    <tr><td>2254</td><td><a href="/v/3">2026년 광주형일자리 인증 참여기업 모집 공고</a></td>
+        <td>관리자</td><td>2026-08-28</td></tr>
+    </tbody></table></body></html>"""
+    r = P(html, inst(id="t3", base="https://example.com"))
+    check("잘린 제목이 복구됨", "경쟁력 강화 지원 계획 공고" in r[0].title, True)
+    check("말줄임표가 남지 않음", "…" in r[0].title, False)
+
+    print("\n[16] 게시판이 '접수중'이면 날짜 해석이 어긋나도 살린다")
+    html = """<html><body><table><tbody>
+    <tr><td><a href="/v/9">에이지테크 실증 지원 공고(~4.24.(금), 18:00)</a></td>
+        <td>접수중</td></tr>
+    <tr><td><a href="/v/8">고령친화우수제품 지정 공고(~5.30.(금), 18:00)</a></td>
+        <td>접수중</td></tr>
+    <tr><td><a href="/v/7">돌봄로봇 실증 참여기업 모집 공고(~6.20.(금), 18:00)</a></td>
+        <td>접수중</td></tr>
+    </tbody></table></body></html>"""
+    r = P(html, inst(id="t4", base="https://example.com"))
+    check("접수중 표시를 읽음", r[0].open_flag, True)
+    check("마감으로 처리하지 않음", r[0].closed_flag, False)
 
     print()
     if FAILS:

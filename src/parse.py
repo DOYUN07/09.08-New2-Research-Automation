@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
@@ -150,6 +150,8 @@ _TRAILING_META = re.compile(
     r"\s+20\d{2}\s*[-./]\s*\d{1,2}\s*[-./]\s*\d{1,2}(\s*[\d,]+)?\s*$"
 )
 _WS = re.compile(r"\s+")
+# 목록에서 제목이 잘렸다는 표시 — '…', '...', '..' 로 끝남
+_TRUNCATED = re.compile(r"(…|\.{2,})\s*$")
 
 # 첨부파일 링크를 제목으로 착각하지 않기 위한 판별
 _FILE_EXT = re.compile(
@@ -219,7 +221,9 @@ def _anchor_title(a: Tag) -> str:
     """
     full = clean_text(a.get_text(" "))
     attr = clean_text(a.get("title") or "")
-    if len(attr) > len(full):
+    # 목록에서 제목을 '…'로 잘라 보여주는 게시판이 있다 (광주경제진흥상생일자리재단,
+    # 보건복지부). 이때 전체 제목은 <a title="..."> 속성에 들어 있는 경우가 많다.
+    if attr and (len(attr) > len(full) or (_TRUNCATED.search(full) and not _TRUNCATED.search(attr))):
         full = attr
 
     kids = [clean_text(c.get_text(" ")) for c in a.find_all(True, recursive=False)]
@@ -235,16 +239,64 @@ def _anchor_title(a: Tag) -> str:
     return full
 
 
-_CLOSED_WORDS = {"마감", "종료", "접수마감", "모집마감", "완료", "접수종료"}
+# 34개 기관 게시판을 직접 열어 확인한 실제 상태값이다.
+# 게시판마다 표기가 다르고, 이 값이 마감 여부의 가장 정확한 근거다 —
+# 날짜를 해석하는 것보다 사이트가 직접 붙여둔 상태를 믿는 편이 낫다.
+_CLOSED_WORDS = {
+    "마감", "종료", "완료",
+    "접수마감", "모집마감", "접수종료", "모집종료", "공고종료",
+    "진행마감", "접수완료", "공고마감", "마감됨", "종료됨",
+}
+# 진행 중임을 사이트가 명시한 경우. 이때는 날짜 해석이 어긋나도 살린다.
+_OPEN_WORDS = {
+    "진행", "진행중", "접수중", "공고접수중", "모집중", "신청가능",
+    "접수예정", "접수전", "공고예정", "예정",
+}
+
+
+def row_status(row: Tag) -> str | None:
+    """행의 상태 셀을 읽는다. 'closed' / 'open' / None.
+
+    게시판 대부분이 '접수중', '진행중', '접수마감', '종료' 같은 상태를 셀 하나에
+    따로 담아둔다. 이걸 읽으면 상세 페이지를 열지 않고도 마감 여부를 알 수 있고,
+    날짜 표기가 애매한 게시판에서도 틀리지 않는다.
+
+    셀 전체가 딱 그 단어일 때만 인정한다. 제목 안의 '마감' 같은 말에
+    반응하면 멀쩡한 공고를 버리게 된다.
+    """
+    for cell in row.find_all(["td", "span", "em", "strong", "div", "p", "i", "b"]):
+        t = cell.get_text(" ", strip=True).replace(" ", "")
+        if not t or len(t) > 8:
+            continue
+        if t in _CLOSED_WORDS:
+            return "closed"
+        if t in _OPEN_WORDS:
+            return "open"
+    return None
 
 
 def looks_closed(row: Tag) -> bool:
     """상태 셀이 '마감/종료'인 행인지 확인한다."""
-    for cell in row.find_all(["td", "span", "em", "strong", "div", "p"]):
-        t = cell.get_text(" ", strip=True)
-        if t in _CLOSED_WORDS:
-            return True
-    return False
+    return row_status(row) == "closed"
+
+
+# 'D-7', 'D - 7', 'D-0' — 남은 일수만 적어두는 게시판이 있다.
+# (부산정보산업진흥원·K-Startup은 이게 유일한 마감 정보다)
+_DDAY = re.compile(r"\bD\s*-\s*(\d{1,3})\b")
+
+
+def dday_deadline(text: str, today: date) -> date | None:
+    """'D-7' 을 실제 날짜로 바꾼다. 없으면 None."""
+    m = _DDAY.search(text or "")
+    if not m:
+        return None
+    try:
+        n = int(m.group(1))
+    except ValueError:
+        return None
+    if n > 730:  # 비정상적으로 먼 값은 신뢰하지 않는다
+        return None
+    return today + timedelta(days=n)
 
 
 # ---------------------------------------------------------------- 행 탐지
@@ -332,7 +384,11 @@ class Notice:
     closed_flag: bool = False
     matched_keywords: list[str] = field(default_factory=list)
     note: str = ""  # '상시' 등
-    deadline_source: str = "목록"  # 목록 / 제목 / 상세
+    deadline_source: str = "목록"  # 목록 / 제목 / 상세 / D-day
+    # 게시판이 '접수중'·'진행중'이라고 직접 표시한 공고.
+    # 날짜 해석이 어긋나도 이건 살린다 — 사이트가 우리보다 정확하다.
+    # (기존 위치 인자 순서를 깨지 않으려고 맨 뒤에 둔다)
+    open_flag: bool = False
 
     @property
     def key(self) -> str:
@@ -566,7 +622,19 @@ def _rows_to_notices(
                 source = "제목"
 
         row_text = row.get_text(" ", strip=True)
-        closed = looks_closed(row) or deadline_rules.is_closed(row_text)
+
+        # 게시판이 붙여둔 상태값이 가장 정확한 근거다.
+        status = row_status(row)
+        closed = status == "closed" or deadline_rules.is_closed(row_text)
+        open_flag = status == "open" and not closed
+
+        # 마감일을 아직 못 찾았으면 'D-7' 같은 남은 일수를 쓴다.
+        # 부산정보산업진흥원·K-Startup 은 목록에 이것밖에 없다.
+        if deadline is None and not closed:
+            dd = dday_deadline(row_text, today or date.today())
+            if dd:
+                deadline = dd
+                source = "D-day"
 
         out.append(
             Notice(
@@ -577,6 +645,7 @@ def _rows_to_notices(
                 posted=posted,
                 deadline=deadline,
                 closed_flag=closed,
+                open_flag=open_flag,
                 note=note,
                 deadline_source=source,
             )

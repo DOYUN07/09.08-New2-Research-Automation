@@ -115,6 +115,13 @@ def drop_expired(
             dropped += 1
             continue
         if n.deadline is not None and n.deadline < today:
+            # 게시판이 '접수중'이라고 직접 표시한 공고는 살린다.
+            # 우리가 읽은 날짜가 틀렸을 가능성이 더 크다 — 연도 없는 '~4.24' 같은
+            # 표기는 해석이 어긋나기 쉽지만, 사이트의 접수 상태는 틀리지 않는다.
+            if n.open_flag:
+                n.note = n.note or "게시판 접수중"
+                kept.append(n)
+                continue
             dropped += 1
             continue
         if n.deadline is None and n.note != "상시" and cfg.unknown_deadline == "exclude":

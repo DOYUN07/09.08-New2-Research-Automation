@@ -20,6 +20,8 @@
   - '사용' 칸이 N, n, 아니오, false 면 그 줄은 무시합니다. 비어 있으면 사용으로 봅니다.
   - 기관 탭에서 기존 기관은 '기관명'으로 찾아 켜고 끄기만 합니다.
     (주소·선택자 같은 세부 설정은 institutions.yaml 이 계속 관리합니다)
+  - 예외: institutions.yaml 에 주소가 아직 비어 있는 기관은 시트 주소로 채웁니다.
+    이미 주소가 있으면 시트 주소는 무시합니다.
   - '주소'가 적힌 새 이름은 새 기관으로 추가됩니다.
   - 시트를 못 읽으면 조용히 로컬 설정을 그대로 씁니다. 브리핑은 멈추지 않습니다.
 """
@@ -172,6 +174,7 @@ def apply_institutions(
     by_name = {i.name.strip(): i for i in institutions}
     turned_on: list[str] = []
     turned_off: list[str] = []
+    filled: list[str] = []
     added = 0
 
     for r in rows:
@@ -179,14 +182,23 @@ def apply_institutions(
         if not name:
             continue
         use = _enabled(r)
+        addr = _cell(r, "주소", "URL", "url", "링크", "게시판주소")
         found = by_name.get(name.strip())
         if found is not None:
             if found.enabled != use:
                 found.enabled = use
                 (turned_on if use else turned_off).append(found.name)
+            # 주소가 아직 비어 있는 기관만 시트 주소로 채운다.
+            # 이미 주소가 있는 기관은 건드리지 않는다 — 게시판 주소는 저장소가
+            # 관리하는 게 원칙이고, 시트에 잘못된 주소가 들어가면 그 기관이
+            # 통째로 죽기 때문이다. (한국바이오특화센터협의회처럼 주소를
+            # 아직 못 정한 기관을 시트에서 바로 살릴 수 있게 하려는 예외다)
+            if not (found.url or "").strip() and addr.startswith("http"):
+                found.url = addr
+                found.base = found.base or addr
+                filled.append(found.name)
             continue
         # 시트에만 있는 새 기관 — 주소가 있어야 추가한다
-        addr = _cell(r, "주소", "URL", "url", "링크", "게시판주소")
         if use and addr.startswith("http"):
             institutions.append(
                 Institution(
@@ -208,6 +220,8 @@ def apply_institutions(
         parts.append("시트가 켬: " + ", ".join(turned_on))
     if turned_off:
         parts.append("시트가 끔: " + ", ".join(turned_off))
+    if filled:
+        parts.append("시트에서 주소 채움: " + ", ".join(filled))
     if added:
         parts.append(f"시트에서 추가 {added}곳")
     return institutions, ("; ".join(parts) if parts else "저장소 설정과 동일")
