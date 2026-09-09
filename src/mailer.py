@@ -27,6 +27,40 @@ def is_configured() -> bool:
     return bool(os.environ.get("SMTP_USER") and os.environ.get("SMTP_PASSWORD"))
 
 
+def clean_recipients(addrs: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
+    """보낼 수 있는 주소만 남기고, 버린 주소는 이유와 함께 돌려준다.
+
+    SMTP 는 수신자마다 'rcpt TO:<주소>' 라는 명령을 보내는데 이 명령은
+    ASCII 로만 보낼 수 있다. 그래서 주소에 한글이 한 글자라도 있으면
+    smtplib 이 UnicodeEncodeError 를 내고, 그 한 건 때문에 **정상 주소까지
+    포함해 발송 전체가 실패한다.**
+
+    실제로 config.yaml 에 예시 주소(받는사람1@example.com)를 지우지 않고
+    실제 주소만 추가했을 때 이 일이 벌어졌다. 그래서 이제는 조용히 걸러낸다.
+    """
+    ok: list[str] = []
+    dropped: list[tuple[str, str]] = []
+    for raw in addrs:
+        a = (raw or "").strip()
+        if not a:
+            continue
+        if a in ok:
+            continue
+        try:
+            a.encode("ascii")
+        except UnicodeEncodeError:
+            dropped.append((a, "주소에 한글 등 ASCII가 아닌 글자가 있음"))
+            continue
+        if a.count("@") != 1 or "." not in a.rsplit("@", 1)[-1] or " " in a:
+            dropped.append((a, "이메일 형식이 아님"))
+            continue
+        if a.rsplit("@", 1)[-1].lower() in ("example.com", "example.org", "example.net"):
+            dropped.append((a, "예시 주소"))
+            continue
+        ok.append(a)
+    return ok, dropped
+
+
 def send(
     subject: str,
     html_body: str,
@@ -45,8 +79,12 @@ def send(
             "SMTP_USER / SMTP_PASSWORD 가 설정되지 않았습니다. "
             "GitHub Secrets에 등록하면 발송이 시작됩니다."
         )
+    recipients, bad = clean_recipients(recipients)
     if not recipients:
-        raise MailNotConfigured("수신자가 없습니다. config.yaml의 recipients를 확인하세요.")
+        why = ("보낼 수 있는 주소가 없습니다 — " + ", ".join(f"{a}({r})" for a, r in bad)) if bad else (
+            "수신자가 없습니다. config.yaml의 recipients 또는 MAIL_TO 시크릿을 확인하세요."
+        )
+        raise MailNotConfigured(why)
 
     body = MIMEMultipart("alternative")
     body.attach(MIMEText(text_body, "plain", "utf-8"))
@@ -72,9 +110,9 @@ def send(
     if port == 465:
         with smtplib.SMTP_SSL(host, port, timeout=45) as smtp:
             smtp.login(user, password)
-            smtp.sendmail(user, recipients, msg.as_string())
+            smtp.sendmail(user, recipients, msg.as_bytes())
     else:
         with smtplib.SMTP(host, port, timeout=45) as smtp:
             smtp.starttls()
             smtp.login(user, password)
-            smtp.sendmail(user, recipients, msg.as_string())
+            smtp.sendmail(user, recipients, msg.as_bytes())

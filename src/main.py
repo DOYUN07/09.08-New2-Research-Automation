@@ -20,7 +20,7 @@ from . import archive, sheet
 from .config import ROOT, Config, Institution, load_config, load_institutions
 from .fetch import FetchError, fetch, make_session
 from .filters import FilterStats, apply_filters
-from .mailer import MailNotConfigured, is_configured, send
+from .mailer import MailNotConfigured, clean_recipients, is_configured, send
 from .parse import Notice, parse
 from .render import render_html, render_text
 from .store import load_seen, prune, record, save_seen, seen_keys
@@ -136,9 +136,15 @@ def run(dry_run: bool = False) -> int:
             print(f"     → {m}")
     else:
         print("     → (없음) 받는 사람이 지정되지 않았습니다")
-    bad = [m for m in cfg.recipients if "@" not in m or "." not in m.rsplit("@", 1)[-1]]
-    if bad:
-        print(f"   [!] 주소 형식이 이상합니다 (오타 확인): {', '.join(bad)}")
+    # 보낼 수 없는 주소는 여기서 걸러낸다.
+    # SMTP 는 'rcpt TO:<주소>' 명령을 ASCII 로만 보낼 수 있어서, 한글이 섞인
+    # 예시 주소(받는사람1@example.com)가 하나라도 남아 있으면 발송 전체가
+    # UnicodeEncodeError 로 실패한다. 실제 주소까지 같이 못 받게 된다.
+    good, dropped = clean_recipients(cfg.recipients)
+    if dropped:
+        for m, why in dropped:
+            print(f"   [!] 보낼 수 없는 주소라 건너뜁니다 ({why}): {m}")
+    cfg.recipients = good
     raw, failed = collect(institutions, cfg)
 
     state = load_seen()
@@ -250,6 +256,8 @@ def run(dry_run: bool = False) -> int:
         return 0
     except Exception as exc:  # noqa: BLE001
         print(f"-- 발송 실패: {type(exc).__name__}: {exc}")
+        # 어느 줄에서 났는지 남긴다. 메시지만으로는 원인을 못 찾은 적이 있다.
+        traceback.print_exc()
         return 1
 
     # 발송에 성공했을 때만 이력과 누적 기록을 저장한다
