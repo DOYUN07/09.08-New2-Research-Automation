@@ -170,7 +170,9 @@ def apply_institutions(
 ) -> tuple[list[Institution], str]:
     rows = _get(url, timeout)
     by_name = {i.name.strip(): i for i in institutions}
-    on = off = added = 0
+    turned_on: list[str] = []
+    turned_off: list[str] = []
+    added = 0
 
     for r in rows:
         name = _cell(r, "기관명", "기관", "이름", "name")
@@ -181,8 +183,7 @@ def apply_institutions(
         if found is not None:
             if found.enabled != use:
                 found.enabled = use
-                on += 1 if use else 0
-                off += 0 if use else 1
+                (turned_on if use else turned_off).append(found.name)
             continue
         # 시트에만 있는 새 기관 — 주소가 있어야 추가한다
         addr = _cell(r, "주소", "URL", "url", "링크", "게시판주소")
@@ -200,7 +201,16 @@ def apply_institutions(
             )
             added += 1
 
-    return institutions, f"켬 {on} / 끔 {off} / 추가 {added}"
+    # 어느 기관이 바뀌었는지 이름까지 남긴다.
+    # 저장소에서 끈 기관을 시트가 다시 켜는 일이 있어, 숫자만으로는 원인을 못 찾는다.
+    parts = []
+    if turned_on:
+        parts.append("시트가 켬: " + ", ".join(turned_on))
+    if turned_off:
+        parts.append("시트가 끔: " + ", ".join(turned_off))
+    if added:
+        parts.append(f"시트에서 추가 {added}곳")
+    return institutions, ("; ".join(parts) if parts else "저장소 설정과 동일")
 
 
 # ---------------------------------------------------------------- 진입점

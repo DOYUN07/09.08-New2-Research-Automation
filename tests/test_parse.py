@@ -468,6 +468,9 @@ def main() -> int:
     check("새 기관 추가됨", "새로운진흥원" in by, True)
     check("주소 없는 새 이름은 무시", "이름만있고주소없음" in by, False)
     check("로그 4줄", len(log), 4)
+    inst_log = [x for x in log if x.startswith("구글시트 기관")][0]
+    check("시트가 켠 기관 이름이 로그에", "시트가 켬: KOTRA" in inst_log, True)
+    check("시트가 끈 기관 이름이 로그에", "시트가 끔: 부산정보산업진흥원" in inst_log, True)
 
     print("\n[11-a2] 예전 방식(한 탭에 '구분' 칸)도 계속 동작")
     cfg2b = load_config()
