@@ -46,9 +46,32 @@ def _norm(s: str) -> str:
     return "".join((s or "").split()).lower()
 
 
+# 공백을 무시하고 비교해도 되는 키워드의 최소 길이(공백 제외).
+# 짧은 키워드까지 공백을 지우고 비교하면 단어 경계를 넘어 걸린다.
+#   '면세유 공급' → '면세유공급' 안에 '유공'이 들어가 버린다.
+#   실제로 2026-09-10 브리핑에 '「농업용 면세유 공급 및 관리규정」 개정 알림'이
+#   '유공'(정부포상 키워드)으로 잘못 채택됐다.
+# 반대로 '공개 검증'/'결과 발표'처럼 기관마다 띄어쓰기가 다른 말은
+# 붙여서 비교해야 걸린다. 그래서 길이로 나눈다.
+_LOOSE_MIN = 4
+
+
 def _hits(title: str, words: list[str]) -> list[str]:
-    low = _norm(title)
-    return [w for w in words if w and _norm(w) in low]
+    low = title.lower()          # 원문 그대로 (띄어쓰기 유지)
+    low_ns = _norm(title)        # 공백을 모두 없앤 것
+    out: list[str] = []
+    for w in words:
+        if not w:
+            continue
+        w_ns = _norm(w)
+        if not w_ns:
+            continue
+        if len(w_ns) >= _LOOSE_MIN:
+            if w_ns in low_ns:
+                out.append(w)
+        elif w.lower() in low:   # 짧은 키워드는 글자 그대로만 찾는다
+            out.append(w)
+    return out
 
 
 def apply_filters(

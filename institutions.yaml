@@ -166,14 +166,18 @@ institutions:
     notes: "로그인 불필요. 표가 아니라 ul/li 구조라 선택자 지정 필수. GET으로는 '접수중' 탭만 수집됨."
 
   - id: betterfuture
-    name: 저출산고령사회위원회
+    name: 인구전략위원회(구 저출산고령사회위원회)
     enabled: true
     status: ok
-    url: "https://www.betterfuture.go.kr/front/notificationSpace/frontNotice.do"
+    url: "https://www.betterfuture.go.kr/home/kor/M929069635/board.do"
     base: "https://www.betterfuture.go.kr"
-    link_from_onclick: "getDetailContent\\('[^']*','(\\d+)'\\)"
-    detail_url: "https://www.betterfuture.go.kr/front/notificationSpace/frontNoticeDetail.do?articleId={id}"
-    notes: "기업 지원사업 공고는 거의 없고 정책 공지 위주. 적합도 낮으나 유지."
+    notes: >-
+      2026-09-09 조직 개편으로 저출산고령사회위원회 → 인구전략위원회.
+      도메인(betterfuture.go.kr)은 그대로지만 경로가 통째로 바뀌었다.
+      구 주소 /front/notificationSpace/frontNotice.do 는 HTTP 404.
+      새 공지사항 게시판은 /home/kor/M929069635/board.do (게시물 224건 그대로 이관).
+      번호·구분(공지/채용공고)·제목·등록일이 목록에 있다.
+      기업 지원사업 공고는 거의 없고 정책 공지·채용 위주라 실제 채택은 드물다.
 
   # ---------- 4. 진흥원·공공기관 ----------
   - id: nipa
