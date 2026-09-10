@@ -245,17 +245,23 @@ institutions:
   - id: socialenterprise
     name: 한국사회적기업진흥원
     enabled: true
-    status: none
-    url: "https://www.socialenterprise.or.kr/homepage/bbs/board.do?bsIdx=10002&menuId=822"
-    base: "https://socialenterprise.or.kr"
-    notes: >
+    status: ok
+    type: json
+    method: POST
+    url: "https://www.socialenterprise.or.kr/homepage/bbs/ajax/boardList.do"
+    post_data: "bsIdx=10002&menuId=822&pageIndex=1"
+    json_items: resultList
+    json_title: SUBJECT
+    json_date: WRITE_DATE
+    json_id: B_IDX
+    detail_url: "https://www.socialenterprise.or.kr/homepage/bbs/boardView.do?bsIdx=10002&menuId=822&bIdx={id}&page=1&bcIdx=0"
+    base: "https://www.socialenterprise.or.kr"
+    notes: >-
       엑셀의 '한국사회기술원'은 실존 명칭이 아니어서 이 기관으로 판단.
-      구 주소(/social/board/list.do)는 1·2차 진단 모두 HTTP 404 → 사용자가 알려준
-      새 주소로 교체. 다만 이것은 게시판이 아니라 메인 페이지이므로, 파서가
-      메인에 노출된 공지·공고 영역을 집어올 수 있고 배너·메뉴를 잘못 집을 수도 있다.
-      2026-09-08·09 실전 결과: 외부 배너(판로지원 플랫폼→sepp.or.kr, 협동조합 홍보포털→coop.go.kr)와
-      자료실 글('인증 가이드', '인증 안내 리플릿')만 나오고 실제 공고는 한 건도 없었다.
-      메인 페이지는 공고 게시판이 아니므로 비활성화한다.
+      공지사항 게시판(board.do)은 목록을 자바스크립트로 그려서 정적 수집이 안 된다
+      (2026-09-10 '목록을 인식하지 못했습니다'). 그 화면이 호출하는 JSON API를
+      직접 POST 로 부른다. CATEGORY_NAME 으로 사업공고/안내/선정결과가 구분되고,
+      마감일은 제목에 '(~9.28.(월) 13:00)' 형태로 들어 있다.
       진짜 공고 게시판(알림·소식 > 공지사항 등) 주소를 찾으면 url 만 바꾸고 enabled: true 로.
 
   - id: ekr
@@ -278,10 +284,14 @@ institutions:
   - id: kiat
     name: 한국산업기술진흥원(KIAT)
     enabled: true
-    status: js
-    url: "https://www.kiat.or.kr/front/board/boardContentsListPage.do?board_id=90&MenuId=b159c9dac684471b87256f1e25404f5e"
+    status: ok
+    url: "https://www.kiat.or.kr/front/board/boardContentsListAjax.do?board_id=90&MenuId=b159c9dac684471b87256f1e25404f5e&miv_pageNo=1&miv_pageSize=15"
     base: "https://www.kiat.or.kr"
-    notes: "엑셀의 '한국산업기술원'은 이 기관으로 판단(KEIT는 R&D 과제공고 중심이고 IRIS로 이관됨). 목록이 JS/POST라 정적 수집 불가."
+    notes: >-
+      화면 주소(boardContentsListPage.do)는 목록을 자바스크립트로 그려서 서버가 준
+      HTML에는 <tr> 이 0개다(2026-09-10 확인). 그 화면이 실제로 호출하는
+      boardContentsListAjax.do 를 직접 부르면 목록 HTML이 그대로 온다.
+      공고일·접수기간·접수중/접수마감 상태가 모두 들어 있다.
 
   - id: kita
     name: KITA(한국무역협회)

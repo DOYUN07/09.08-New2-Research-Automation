@@ -653,7 +653,7 @@ def _rows_to_notices(
     return out
 
 
-def parse_json(text: str, inst: Institution) -> list[Notice]:
+def parse_json(text: str, inst: Institution, today: date | None = None) -> list[Notice]:
     data = json.loads(text)
     items = data.get(inst.json_items, []) if inst.json_items else data
     if not isinstance(items, list):
@@ -668,13 +668,25 @@ def parse_json(text: str, inst: Institution) -> list[Notice]:
         ds = find_dates(raw_date)
         ident = str(it.get(inst.json_id or "id", ""))
         url = inst.detail_url.replace("{id}", ident) if inst.detail_url else inst.url
+        posted = ds[0].value if ds else None
+
+        # HTML 목록과 같은 규칙을 적용한다 — 제목에 박아둔 마감일
+        # "(~9.28.(월) 13:00)" 을 읽고, 상시모집도 알아본다.
+        ref = posted or today or date.today()
+        deadline, note = deadline_rules.from_text(
+            title, ref, anchor_is_posted=posted is not None
+        )
         out.append(
             Notice(
                 institution_id=inst.id,
                 institution_name=inst.name,
                 title=title,
                 url=url,
-                posted=ds[0].value if ds else None,
+                posted=posted,
+                deadline=deadline,
+                closed_flag=deadline_rules.is_closed(title),
+                note=note,
+                deadline_source="제목" if deadline else "",
             )
         )
     return out
@@ -682,5 +694,5 @@ def parse_json(text: str, inst: Institution) -> list[Notice]:
 
 def parse(text: str, inst: Institution, today: date | None = None) -> list[Notice]:
     if inst.type == "json":
-        return parse_json(text, inst)
+        return parse_json(text, inst, today)
     return parse_html(text, inst, today)

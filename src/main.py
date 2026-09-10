@@ -39,6 +39,36 @@ def today_kst():
 
 RETRY_ROUND_WAIT = 45  # 접속 실패한 기관을 다시 시도하기 전 대기(초)
 
+# 접속 실패한 기관만 다시 시도하는 라운드의 대기 시간(초).
+# 정부 사이트(.go.kr)는 해외 IP나 짧은 시간에 몰린 요청을 한동안 막아두는 일이 잦다.
+# 2026-09-10 실행에서 4개 부처를 포함해 8곳이 한꺼번에 연결 타임아웃이 났는데,
+# 같은 주소를 브라우저(국내 IP)로 열면 전부 정상이었다. 즉 코드가 아니라 차단이다.
+# 45초 한 번으로는 안 풀려서, 간격을 벌려 여러 번 시도한다.
+# 최악의 경우 추가로 약 9분이 더 걸리지만 워크플로 제한(35분) 안에 들어간다.
+RETRY_ROUNDS = (60, 180, 300)
+
+
+def _short_reason(reason: str) -> str:
+    """실패 사유를 메일에 실을 만한 한 줄로 줄인다.
+
+    requests 의 원문은 'HTTPSConnectionPool(host=..., port=443): Max retries
+    exceeded with url: ... (Caused by ConnectTimeoutError(<HTTPSConnection ...' 처럼
+    한 기관당 300자가 넘는다. 8곳이 실패하면 메일 하단이 이것만으로 가득 찬다.
+    원문은 GitHub Actions 로그에 그대로 남으니, 메일에는 요약만 싣는다.
+    """
+    r = reason or ""
+    if "ConnectTimeout" in r or "timed out" in r or "Max retries" in r:
+        return "접속 시간 초과 (서버가 응답하지 않음)"
+    if "SSLError" in r or "certificate" in r.lower():
+        return "SSL 인증서 오류"
+    if "HTTP 403" in r:
+        return "접근 차단됨 (HTTP 403)"
+    if "HTTP 404" in r:
+        return "주소를 찾을 수 없음 (HTTP 404)"
+    if r.startswith("HTTP 5"):
+        return f"서버 오류 ({r.split(':')[0]})"
+    return r if len(r) <= 120 else r[:117] + "…"
+
 
 def _try_one(session, inst: Institution, cfg: Config) -> tuple[list[Notice], str | None]:
     """한 기관을 수집한다. (결과, 실패사유) 를 돌려준다."""
@@ -90,24 +120,32 @@ def collect(
 
     # 재시도 라운드 — 정부 부처 사이트들이 특정 IP를 한동안 막는 일이 잦다.
     # 한 바퀴 다 돈 뒤 잠시 쉬었다가 접속 실패한 곳만 새 연결로 다시 시도한다.
-    retryable = [x for x in institutions if _is_network_error(reasons.get(x.id, ""))]
-    if retryable:
-        print(f"-- 접속 실패 {len(retryable)}곳, {RETRY_ROUND_WAIT}초 후 재시도합니다")
-        time.sleep(RETRY_ROUND_WAIT)
-        session2 = make_session(cfg)
+    for round_no, wait in enumerate(RETRY_ROUNDS, start=1):
+        retryable = [x for x in institutions if _is_network_error(reasons.get(x.id, ""))]
+        if not retryable:
+            break
+        names_now = ", ".join(x.name for x in retryable)
+        print(
+            f"-- 접속 실패 {len(retryable)}곳, {wait}초 후 재시도 "
+            f"({round_no}/{len(RETRY_ROUNDS)}회차): {names_now}"
+        )
+        time.sleep(wait)
+        session_retry = make_session(cfg)  # 연결을 새로 맺는다
         for i, inst in enumerate(retryable):
             if i:
                 time.sleep(cfg.delay_between * 2)
-            notices, reason = _try_one(session2, inst, cfg)
+            notices, reason = _try_one(session_retry, inst, cfg)
             if not reason:
                 raw[inst.id] = notices
                 reasons.pop(inst.id, None)
-                print(f"  [+] {inst.name}: 재시도 성공 — {len(notices)}건")
+                print(f"  [+] {inst.name}: {round_no}회차 재시도 성공 — {len(notices)}건")
             else:
-                print(f"  [!] {inst.name}: 재시도도 실패 — {reason}")
+                reasons[inst.id] = reason
+                print(f"  [!] {inst.name}: {round_no}회차도 실패")
 
     names = {x.id: x.name for x in institutions}
-    failed = [(names[k], v) for k, v in reasons.items()]
+    # 메일에는 줄인 사유를 싣는다. 원문은 위에서 이미 로그로 출력됐다.
+    failed = [(names[k], _short_reason(v)) for k, v in reasons.items()]
     return raw, failed
 
 

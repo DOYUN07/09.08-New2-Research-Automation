@@ -36,13 +36,26 @@ def fetch(session: requests.Session, inst: Institution, cfg: Config) -> str:
     last_err: Exception | None = None
     for attempt in range(cfg.retries + 1):
         try:
-            resp = session.get(
-                inst.url,
-                timeout=cfg.timeout,
-                verify=inst.verify_ssl,
-                headers={"Referer": inst.base or inst.url},
-                allow_redirects=True,
-            )
+            headers = {"Referer": inst.base or inst.url}
+            if (inst.method or "GET").upper() == "POST":
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
+                headers["X-Requested-With"] = "XMLHttpRequest"
+                resp = session.post(
+                    inst.url,
+                    data=inst.post_data or "",
+                    timeout=cfg.timeout,
+                    verify=inst.verify_ssl,
+                    headers=headers,
+                    allow_redirects=True,
+                )
+            else:
+                resp = session.get(
+                    inst.url,
+                    timeout=cfg.timeout,
+                    verify=inst.verify_ssl,
+                    headers=headers,
+                    allow_redirects=True,
+                )
             if resp.status_code >= 400:
                 raise FetchError(f"HTTP {resp.status_code}")
 

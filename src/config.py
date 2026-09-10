@@ -45,6 +45,13 @@ class Institution:
     json_date: str | None = None
     json_id: str | None = None
 
+    # 목록을 자바스크립트로 그리는 게시판은, 화면 주소 대신 그 화면이 실제로
+    # 호출하는 주소를 직접 부른다. 그 주소가 POST만 받는 경우가 있다.
+    #   method: "GET"(기본) 또는 "POST"
+    #   post_data: "bsIdx=10002&menuId=822&pageIndex=1" 형태의 폼 데이터
+    method: str = "GET"
+    post_data: str | None = None
+
     @classmethod
     def from_dict(cls, raw: dict) -> "Institution":
         known = {f for f in cls.__dataclass_fields__}
