@@ -80,9 +80,15 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # state/ 아래 전부 + 저장소 최상단의 누적 엑셀 (엑셀은 월·수·금에만 바뀝니다)
+          # state/ 아래 전부 + 저장소 최상단의 누적 엑셀
           git add -A state/
-          git add -A -- '*.xlsx'
+          # 누적 엑셀은 월·수·금에만 만들어진다. 없는 날 'git add' 는
+          # "pathspec did not match any files" 로 종료코드 128 을 내고,
+          # 이 셸이 bash -e 라 단계 전체가 거기서 중단된다.
+          # 그러면 바로 위에서 add 한 state/ 도 커밋되지 않아
+          # '이미 보낸 공고' 기록이 날아가고 다음 실행이 같은 공고를 또 보낸다.
+          # 파일이 없는 날은 조용히 넘어가야 한다.
+          git add -A -- '*.xlsx' 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "변경 없음"
           else
