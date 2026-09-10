@@ -13,8 +13,9 @@
 # ⚠️ 실제 주소를 여기에 적을 때는 아래 예시 두 줄을 반드시 지우세요.
 #    example.com 주소가 남아 있으면 그 주소로도 발송을 시도해 실패합니다.
 recipients:
-  - person1@example.com
-  - person2@example.com
+  - dlehdbs0716@gmail.com
+#  - person1@example.com
+#  - person2@example.com
 
 # 메일 제목 앞에 붙는 말머리
 subject_prefix: "[공고 브리핑]"
