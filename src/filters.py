@@ -122,14 +122,34 @@ def apply_filters(
             continue
         n.matched_keywords = matched
 
-        # 5) 중복
+        kept.append(n)
+
+    # 5) 게시일이 없는 공고는 '목록 위쪽 N건'까지만 후보로 본다.
+    #
+    #    게시일이 있으면 '최근 10일' 조건이 바닥을 막아준다. 그런데 목록에
+    #    날짜가 없는 게시판(고령친화산업지원센터·K-Startup·광주TP·전남정보문화)은
+    #    그 게시판의 과거 전체가 계속 후보로 남는다.
+    #    아래 6)의 중복 제거가 위쪽을 걷어내면 그 자리를 더 오래된 공고가 채우고,
+    #    실행을 거듭할수록 목록 아래쪽 옛날 공고가 올라온다.
+    #    (실측: 20건짜리 목록에서 4번 실행하니 1~5 → 6~10 → 11~15 → 16~20)
+    #
+    #    게시판 목록은 위가 최신이므로, 날짜가 없을 때는 '몇 번째 줄인지'가
+    #    유일한 최신성 단서다. 그래서 위쪽 N건으로 창을 고정한다.
+    if cfg.max_per_institution > 0:
+        undated = [n for n in kept if n.posted is None]
+        if len(undated) > cfg.max_per_institution:
+            allowed = {id(n) for n in undated[: cfg.max_per_institution]}
+            kept = [n for n in kept if n.posted is not None or id(n) in allowed]
+
+    # 6) 중복 — 이미 보낸 공고
+    fresh: list[Notice] = []
+    for n in kept:
         if cfg.dedupe and n.key in seen_keys:
             stats.dropped_duplicate += 1
             continue
-
-        kept.append(n)
+        fresh.append(n)
         stats.kept += 1
 
     # 최신순 정렬 (게시일 미상은 뒤로)
-    kept.sort(key=lambda x: (x.posted is None, -(x.posted.toordinal() if x.posted else 0)))
-    return kept[: cfg.max_per_institution]
+    fresh.sort(key=lambda x: (x.posted is None, -(x.posted.toordinal() if x.posted else 0)))
+    return fresh[: cfg.max_per_institution]

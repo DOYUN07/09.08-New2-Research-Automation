@@ -501,7 +501,13 @@ def _cleanest(cands: list[str]) -> str:
 
 
 def _pick_link(row: Tag, inst: Institution) -> str:
-    base = inst.base or inst.url
+    # 상대경로는 '그 HTML을 받아온 주소'를 기준으로 풀어야 한다. 브라우저와 같은 규칙이다.
+    # base 를 기준으로 쓰면 목록 페이지의 폴더 경로가 날아간다 —
+    # 부산시민운동지원센터에서 './news_view?no=9774' 가
+    #   (틀림) https://www.ngocenter.or.kr/news_view?no=9774        ← 빈 페이지
+    #   (맞음) https://www.ngocenter.or.kr/info/news_view?no=9774
+    # 로 갈렸다. base 는 같은 사이트인지 판별하는 용도로만 남긴다.
+    base = inst.url or inst.base
     anchors = row.find_all("a")
 
     # 1) 정상적인 href (첨부파일 링크는 건너뛴다)

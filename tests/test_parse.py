@@ -28,6 +28,11 @@ def check(label: str, got, want) -> None:
 def inst(**kw) -> Institution:
     kw.setdefault("id", "t")
     kw.setdefault("name", "테스트")
+    # 실제 설정에서 url(목록 주소)과 base(사이트 기준)는 항상 같은 사이트다.
+    # 예전 픽스처는 base 만 기관 주소로 주고 url 은 example.com 으로 두었는데,
+    # 상대경로를 목록 주소 기준으로 풀도록 고친 뒤로는 그 조합이 현실에 없다.
+    if "url" not in kw and "base" in kw:
+        kw["url"] = kw["base"].rstrip("/") + "/list"
     kw.setdefault("url", "https://example.com/list")
     kw.setdefault("base", "https://example.com")
     return Institution(**kw)
@@ -852,6 +857,74 @@ def main() -> int:
         "'디지털 전환'도 디지털전환으로 걸림",
         "디지털전환" in _kw("대한민국 디지털 전환 대상 표창 추천", INC),
         True,
+    )
+
+    print("\n[18] 실행을 거듭해도 목록 아래쪽 옛날 공고를 파고들지 않는지")
+    from src.parse import Notice as _No
+
+    cfg18 = load_config()
+    cfg18.dedupe = True
+    cfg18.max_per_institution = 5
+    cfg18.include_keywords = ["고령"]
+    cfg18.exclude_keywords = []
+    cfg18.unknown_posted = "include"
+    cfg18.unknown_deadline = "include_flagged"
+
+    # 게시일이 없는 게시판(고령친화산업지원센터 형태). 목록 20건, 위가 최신.
+    undated = [
+        _No("x", "테스트", f"고령친화 공고 {n:02d}번", f"https://x.kr/{n}", None, None)
+        for n in range(1, 21)
+    ]
+    seen18: set[str] = set()
+    rounds = []
+    for _ in range(4):
+        got = apply_filters(list(undated), cfg18, TODAY, seen18, FilterStats())
+        rounds.append([g.title.split()[2] for g in got])
+        seen18 |= {g.key for g in got}
+    check("1회차는 목록 위 5건", rounds[0], ["01번", "02번", "03번", "04번", "05번"])
+    check("2회차는 더 파고들지 않음", rounds[1], [])
+    check("3회차도 없음", rounds[2], [])
+
+    # 새 공고가 올라오면 그건 나가야 한다
+    fresh = [_No("x", "테스트", "고령친화 신규 공고 A", "https://x.kr/new", None, None)]
+    got = apply_filters(fresh + list(undated), cfg18, TODAY, seen18, FilterStats())
+    check("새 공고는 정상 채택", [g.title for g in got], ["고령친화 신규 공고 A"])
+
+    # 게시일이 있는 게시판은 기존 동작 유지 (최근 N일 조건이 바닥을 막는다)
+    dated = [
+        _No("y", "테스트", f"고령 공고 {n:02d}", f"https://y.kr/{n}", TODAY - timedelta(days=n), None)
+        for n in range(1, 13)
+    ]
+    seen19: set[str] = set()
+    got1 = apply_filters(list(dated), cfg18, TODAY, seen19, FilterStats())
+    seen19 |= {g.key for g in got1}
+    got2 = apply_filters(list(dated), cfg18, TODAY, seen19, FilterStats())
+    check("게시일 있는 게시판 1회차 5건", len(got1), 5)
+    check("게시일 있는 게시판 2회차도 이어서 나감", len(got2), 5)
+
+    print("\n[19] 상대경로 링크를 목록 주소 기준으로 푸는지 (부산시민운동지원센터)")
+    html19 = """<html><body><table><tbody>
+    <tr><td>9774</td><td><a href="./news_view?no=9774&cnc=all">
+        [부산환경운동연합] 고리3·4호기 관련 긴급 기자회견</a></td><td>2026-09-10</td></tr>
+    <tr><td>9756</td><td><a href="./news_view?no=9756&cnc=all">
+        [부산광역시인권센터] 2026년 부산광역시 인권공모전 (~11/1)</a></td><td>2026-09-08</td></tr>
+    <tr><td>9741</td><td><a href="./news_view?no=9741&cnc=all">
+        [아름다운뿌리] 작은 비영리 정기 모금프로젝트(~10/16)</a></td><td>2026-09-05</td></tr>
+    </tbody></table></body></html>"""
+    r = P(
+        html19,
+        Institution(
+            id="ngo",
+            name="부산시민운동지원센터",
+            url="https://www.ngocenter.or.kr/info/news",
+            base="https://www.ngocenter.or.kr",
+        ),
+    )
+    check("행 수", len(r), 3)
+    check(
+        "폴더 경로(/info/)가 유지됨",
+        r[0].url,
+        "https://www.ngocenter.or.kr/info/news_view?no=9774&cnc=all",
     )
 
     print()
