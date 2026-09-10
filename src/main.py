@@ -43,9 +43,12 @@ RETRY_ROUND_WAIT = 45  # 접속 실패한 기관을 다시 시도하기 전 대�
 # 정부 사이트(.go.kr)는 해외 IP나 짧은 시간에 몰린 요청을 한동안 막아두는 일이 잦다.
 # 2026-09-10 실행에서 4개 부처를 포함해 8곳이 한꺼번에 연결 타임아웃이 났는데,
 # 같은 주소를 브라우저(국내 IP)로 열면 전부 정상이었다. 즉 코드가 아니라 차단이다.
-# 45초 한 번으로는 안 풀려서, 간격을 벌려 여러 번 시도한다.
-# 최악의 경우 추가로 약 9분이 더 걸리지만 워크플로 제한(35분) 안에 들어간다.
-RETRY_ROUNDS = (60, 180, 300)
+#
+# 라운드는 1회만 돈다. 여러 번 돌려 차단이 풀리기를 기다리는 것보다,
+# 몇 시간 뒤 오후 실행(17:00)에서 다시 수집하는 편이 확실하고 비용도 싸다.
+# 45초는 짧아서 효과가 없었으므로 3분으로 잡는다. 실행 시간은 최대 4분쯤 늘어난다.
+# 라운드를 늘리려면 숫자를 더 넣으면 된다. 예: (180, 300)
+RETRY_ROUNDS = (180,)
 
 
 def _short_reason(reason: str) -> str:
@@ -152,7 +155,7 @@ def collect(
 # --------------------------------------------------------------- 정상 실행
 
 
-def run(dry_run: bool = False) -> int:
+def run(dry_run: bool = False, only_if_new: bool = False) -> int:
     cfg = load_config()
     all_inst = load_institutions()
 
@@ -235,15 +238,21 @@ def run(dry_run: bool = False) -> int:
 
     # 오늘치 공고만 담은 엑셀 — 누적본과 같은 양식이라 그대로 공유할 수 있다.
     # 매일 첨부한다 (누적본은 월·수·금).
-    if cfg.daily_xlsx and sent:
+    # 하루에 두 번(오전·오후) 실행하므로, 이번 실행분(sent)만 담으면 오후 파일이
+    # 오전 파일을 더 적은 내용으로 덮어쓴다. 누적 기록에서 '오늘 발견'한 것을
+    # 전부 가져와 하루치를 온전히 담는다.
+    today_rows = [r for r in arch_rows if r.get("발견일") == today.isoformat()]
+    if cfg.daily_xlsx and today_rows:
         daily = archive.build_xlsx(
-            archive.rows_of(sent, today),
+            today_rows,
             archive.daily_xlsx_path(OUT, today),
             sheet_title="공고브리핑",
         )
         if daily:
             attach.append(daily)
-            print(f"-- 오늘치 엑셀 {len(sent)}건 → {daily.name}")
+            extra = len(today_rows) - len(sent)
+            more = f" (이번 실행 {len(sent)}건 + 앞선 실행 {extra}건)" if extra > 0 else ""
+            print(f"-- 오늘치 엑셀 {len(today_rows)}건{more} → {daily.name}")
 
     if cfg.archive_enabled:
         # 미리보기용 엑셀은 항상 out/ 에 만든다 (dry-run 이어도 Artifacts로 확인 가능)
@@ -265,11 +274,20 @@ def run(dry_run: bool = False) -> int:
         print(f"   (누적 미리보기는 {OUT/archive.ARCHIVE_XLSX.name} 에 있습니다)")
         return 0
 
+    # 하루 두 번째 실행(오후)은 새로 올라온 게 있을 때만 메일을 보낸다.
+    # 매일 '0건입니다' 메일이 한 통 더 오면 금방 안 읽게 된다.
+    if total == 0 and only_if_new:
+        print("-- 신규 공고 0건 (--only-if-new) → 발송하지 않습니다")
+        return 0
+
     if total == 0 and not cfg.send_when_empty:
         print("-- 신규 공고 0건, send_when_empty=false → 발송하지 않습니다")
         return 0
 
-    subject = f"{cfg.subject_prefix} {today.strftime('%m월 %d일')} 신규 {total}건"
+    # 오후 실행은 제목으로 구분한다. 같은 날 두 통이 오면 어느 쪽이 추가분인지
+    # 바로 알아야 한다.
+    when = " 오후 추가" if only_if_new else ""
+    subject = f"{cfg.subject_prefix} {today.strftime('%m월 %d일')}{when} 신규 {total}건"
     if not is_configured():
         print(
             "-- SMTP 미설정: 메일을 보내지 않았습니다.\n"
@@ -430,6 +448,12 @@ def diagnose(include_disabled: bool = False, dump: bool = False) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="지원사업 공고 브리핑")
     ap.add_argument("--dry-run", action="store_true", help="발송·이력 저장 없이 결과만 생성")
+    ap.add_argument(
+        "--only-if-new",
+        action="store_true",
+        help="신규 공고가 있을 때만 메일을 보냅니다 (하루 두 번째 실행용). "
+        "0건이면 조용히 끝냅니다.",
+    )
     ap.add_argument("--diagnose", action="store_true", help="기관별 수집 상태 점검")
     ap.add_argument("--all", action="store_true", help="진단 시 비활성 기관도 포함")
     ap.add_argument(
@@ -442,7 +466,7 @@ def main() -> int:
     try:
         if args.diagnose:
             return diagnose(include_disabled=args.all, dump=args.dump)
-        return run(dry_run=args.dry_run)
+        return run(dry_run=args.dry_run, only_if_new=args.only_if_new)
     except Exception:  # noqa: BLE001
         traceback.print_exc()
         return 1

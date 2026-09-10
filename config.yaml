@@ -63,6 +63,8 @@ dedupe: true
 require_keyword: true
 
 # 수집 결과가 0건이어도 메일을 보낼지 (시스템이 살아있는지 확인용)
+#   이 설정은 '오전 10시' 정기 실행에만 적용됩니다.
+#   '오후 5시' 실행은 새로 올라온 공고가 있을 때만 보냅니다 (--only-if-new).
 send_when_empty: true
 
 
