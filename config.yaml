@@ -14,6 +14,7 @@
 #    example.com 주소가 남아 있으면 그 주소로도 발송을 시도해 실패합니다.
 recipients: 
   - dlehdbs0716@gmail.com
+  - hb9442@naver.com
   
 # ↑ 실제 주소를 넣을 때는 위의 [] 를 지우고 아래 두 줄의 # 을 풀어서 쓰세요.
 #   예시 주소(person1@example.com)는 그대로 두면 자동으로 걸러집니다.
